@@ -1,0 +1,1 @@
+Jenis file yang digunakan untuk menjalankan kode R adalah Rmd yang merupakan jenis file berbentuk notebook yang mendukung eksekusi kode R sel per sel dan memungkinkan untuk menampilkan gambar atau  tabel secara langsung.
