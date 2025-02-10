@@ -16,7 +16,7 @@ library(fpc)
 library(knitr)
 library(networkD3)
 library(dendextend)
-set.seed(123)
+set.seed(1000)
 ```
 
 ```{r Import-Data}
