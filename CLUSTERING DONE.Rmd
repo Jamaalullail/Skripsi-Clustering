@@ -1,0 +1,260 @@
+CLUSTERING MENGGUNAKAN SOM DAN WARD
+
+```{r include = FALSE}
+library(readxl)
+library(ggplot2)
+library(car)
+library(psych)
+library(stats)
+library(factoextra)
+library(kohonen)
+library(zoo)
+library(cluster)
+library(clValid)
+library(clusterSim)
+library(fpc)
+library(knitr)
+library(networkD3)
+library(dendextend)
+set.seed(123)
+```
+
+```{r Import-Data}
+# Import Data
+data1 <- read_excel("D://SPS 2/Inflasi Tahunan (Y-on-Y) (2022=100) Menurut Kelompok dan Sub Kelompok 01 - 11 Tahun 2024.xlsx")
+head(data1)
+```
+
+```{r Melakukan-Preprocessing-Data}
+# Menyiapkan Data
+## Menghapus kolom yang tidak diperlukan dalam analisis
+data2 <- data1[,-1]
+
+## Mengecek Missing Value
+cat("Ada Missing Value di data2?", any(is.na(data2)), "\n")
+
+## Mengganti Missing Value dengan Rata-rata
+data3 <- na.aggregate(data2, FUN = mean)
+
+## Mengecek Missing Value
+cat("Ada Missing Value di data3?", any(is.na(data3)))
+
+# Memanggil data sebelum dan sesudah imputasi
+kable(head(data2, 15), caption = "Data Sebelum Imputasi")
+kable(head(data3, 15), caption = "Data Sesudah Imputasi")
+```
+
+```{r Analisis-Deskriptif}
+# Analisis Deskriptif
+summary(data3)
+cat("\nStandar Deviasi: \n")
+sapply(data3, function(x) if(is.numeric(x)) sd(x) else NA)
+```
+
+```{r Melakukan-Standarisasi-Z-Score}
+# Mengubah Data menjadi Matrix serta Standarisasi Z-Score
+data4 <- as.matrix(scale(data3))
+
+kable(head(data3, 5), caption = "Data Sebelum Standarisasi (1 - 5)")
+kable(tail(data3, 5), caption = "Data Sebelum Standarisasi (145 - 150)")
+kable(tail(data4, 5), caption = "Data Sesudah Standarisasi (1 - 5)")
+kable(tail(data4, 5), caption = "Data Sesudah Standarisasi (145 - 150)")
+```
+
+```{r Analisis Deskriptif Data sesudah Standarisasi}
+# Analisis Deskriptif Data sesudah Standarisasi
+summary(data4)
+cat("\nStandar Deviasi: \n")
+sapply(data.frame(data4), function(x) if(is.numeric(x)) sd(x) else NA)
+```
+```{r}
+# Menentukan Jumlah Klaster Optimal (Nilai)
+
+## Metode Elbow (WSS)
+Elbow <- vector("numeric", length = 8)
+for (k in 1:8) {
+  kmeans_result <- kmeans(data4, centers = k, nstart = 20)
+  Elbow[k] <- kmeans_result$tot.withinss
+}
+elbow_data <- data.frame(Clusters = 1:8, SSE = Elbow)
+
+## Tabel Hasil Elbow
+data.frame(Klaster = 1:8, Elbow)
+
+# Menentukan Jumlah Klaster Optimal (Plot)
+
+## Plot Metode Elbow (WSS)
+ggplot(elbow_data, aes(x = Clusters, y = SSE)) +
+  geom_line() +
+  geom_point() +
+  ggtitle("Metode Elbow") +
+  xlab("Jumlah Klaster") +
+  ylab("Jumlah Kuadrat dalam Klaster (WSS)")
+```
+
+Diperoleh jumlah klaster optimal ada pada K = 2.
+
+```{r Membuat-Model-Pelatihan-SOM}
+
+# membut Model Pelatihan SOM
+## Membuat Ukuran dan Bentuk Grid 
+som_grid <- somgrid(xdim=5, ydim=5, topo="hexagonal")
+
+## Melatih Model SOM sesuai Jumlah Iterasi, Kecepatan Belajar, dan Lingkungan yang tersedia
+som_model <- som(data4, grid=som_grid, rlen=1000, alpha=c(0.05,0.01),
+                 keep.data = TRUE, dist.fcts = "euclidean")
+
+## Kesimpulan Model SOM yang akan dibuat
+summary(som_model)
+```
+
+```{r Visualisasi-Proses-Clustering-SOM}
+# Visualisasi Proses Clustering SOM
+palette1 <- c("yellow", "green", "red", "orange", "blue", "purple", "magenta")
+palette2 <- tricolor(som_model$grid)
+
+# Progres Pelatihan
+
+## Plot Training Progress
+plot(som_model, type = "changes")
+
+## Mapping Plot
+som_model$grid$pts
+som_model$unit.classif
+plot(som_model, type = "mapping")
+
+## Clustering Metode SOM
+kable(as.data.frame(som_model$codes), caption = "Nilai Codes")
+plot(som_model, type = "codes", bgcol = "white", main = "Fan Plot")
+```
+```{r Hasil Clustering SOM}
+dist(som_model$codes[[1]], diag = T)
+
+# Plot Jarak antar Neuron
+plot(som_model, type = "dist.neighbours", main = "Plot Jarak antar Neuron")
+
+# Plot Clustering K = 2 (Jumlah Klaster Optimal)
+som_cluster <- cutree(hclust(dist(som_model$codes[[1]])),2)
+
+## Menampilkan Plot Clustering SOM
+plot(som_model, type="codes", bgcol = palette1[som_cluster], main = "Hasil Clustering SOM") + add.cluster.boundaries(som_model,som_cluster)
+
+### Menambahkan legenda
+legend_labels <- unique(som_cluster)
+legend_colors <- palette1[legend_labels]
+legend(x = 6.5, y = 5,
+       legend = legend_labels,
+       fill = legend_colors,
+       title = "Cluster")
+```
+```{r}
+# Hasil Clustering
+
+## Hasil SOM
+hasil_som <- data.frame(id=data1$`150 KAB/KOTA INFLASI`, cluster = som_cluster[som_model$unit.classif],data3)
+
+### Jumlah Anggota cluster SOM
+table("Jumlah Anggota Cluster SOM" = hasil_som$cluster)
+```
+SSE <- dist(data4, method = "euclidean")
+dist(head(data4,10), method = "euclidean", diag = FALSE)
+
+clustering_ward <- hclust(SSE, method = "ward.D2")
+dendroNetwork(clustering_ward, height = 3000, width = 500, nodeColour = "blue", opacity = 1)
+ward_cluster <- cutree(clustering_ward, k = 2)
+
+### Menampilkan Plot Clustering Ward
+plot(clustering_ward, main = "Dendrogram Awal Metode Ward")
+
+```{r Membuat-Dendrogram-Hasil-Metode-Ward}
+## Clustering Metode Ward
+SSE <- dist(data4, method = "euclidean")
+SSE <- dist(data.frame(id=data1$`150 KAB/KOTA INFLASI`, data4))
+dist(head(data4,10), method = "euclidean", diag = FALSE)
+
+clustering_ward <- hclust(SSE, method = "ward.D2")
+dendroNetwork(clustering_ward, height = 3500, width = 1000, nodeColour = "blue", opacity = 1)
+ward_cluster <- cutree(clustering_ward, k = 2)
+
+### Menampilkan Plot Clustering Ward
+plot(clustering_ward, main = "Dendrogram Hasil Metode Ward")
+```
+
+```{r Hasil-clustering-dengan-dua-klaster}
+## Menampilkan Plot Clustering Ward
+plot(clustering_ward, main = "Dendrogram Hasil Metode Ward")
+
+### Menambahkan legenda
+rect.hclust(clustering_ward, k = 2, border = 2:3)
+legend(x = 120, y = 18, 
+       legend = paste( 1:2), 
+       fill = 3:2, 
+       title = "Cluster")
+```
+
+```{r Anggota-klaster-SOM-dan-Ward}
+
+
+# Hasil Clustering
+
+## Hasil Ward
+hasil_ward <- data.frame(id=data1$`150 KAB/KOTA INFLASI`, cluster = ward_cluster, data3)
+
+### Jumlah Anggota cluster Ward
+table("Jumlah Anggota Cluster Ward" = hasil_ward$cluster)
+
+```
+
+```{r Evaluasi-masing-masing-Hasil-Clustering-(Z-Score)}
+# Evaluasi Hasil Clustering
+
+d <- dist(data4, method = "euclidean")
+
+## Evaluasi menggunakan Davies Bouldin Index
+DBI_SOM <- index.DB(as.matrix(data4), hasil_som$cluster, centrotypes = "centroids", p=2, q=1)
+DBI_Ward <- index.DB(as.matrix(data4), hasil_ward$cluster, centrotypes = "centroids", p=2, q=1)
+
+## Evaluasi menggunakan Calinski-Harabasz Index
+CHI_SOM <- index.G1(as.matrix(data4), hasil_som$cluster, d = "centroids")
+CHI_Ward <- index.G1(as.matrix(data4), hasil_ward$cluster, d = "centroids")
+
+## Evaluasi menggunakan Dunn Index
+Dunn_SOM <- dunn(distance = d, clusters = hasil_som$cluster, Data = as.matrix(data4), method = "euclidean")
+Dunn_Ward <- dunn(distance = d, clusters = hasil_ward$cluster, Data = as.matrix(data4), method = "euclidean")
+
+# Menampilkan Hasil Evaluasi
+cat("BERIKUT HASIL EVALUASI MENGGUNAKAN DATA TRANSFORMASI \n \n")
+cat("DBI SOM =", DBI_SOM$DB/2, "   ; DBI Ward =", DBI_Ward$DB/2, "  ; (DBI Kecil Win) \n")
+cat("CHI SOM =", CHI_SOM, "   ; CHI Ward =", CHI_Ward, "  ; (CHI Besar Win) \n")
+cat("Dunn SOM =", Dunn_SOM, " ; Dunn Ward =", Dunn_Ward, "; (Dunn Besar Win) \n \n")
+cat("METODE TERBAIK : SELF ORGANIZING MAPS")
+```
+
+```{r Evaluasi-masing-masing-Hasil-Clustering-(Asli)}
+# Evaluasi Hasil Clustering
+
+## Evaluasi menggunakan Davies Bouldin Index
+DBI_SOM <- index.DB(as.matrix(data3), hasil_som$cluster, d = "centroids", p=2, q=1)
+DBI_Ward <- index.DB(as.matrix(data3), hasil_ward$cluster, d = "centroids", p=2, q=1)
+
+## Evaluasi menggunakan Calinski-Harabasz Index
+CHI_SOM <- index.G1(as.matrix(data3), hasil_som$cluster, d = "centroids")
+CHI_Ward <- index.G1(as.matrix(data3), hasil_ward$cluster, d = "centroids")
+
+## Evaluasi menggunakan Dunn Index
+Dunn_SOM <- dunn(distance = d, clusters = hasil_som$cluster, Data = as.matrix(data3), method = "euclidean")
+Dunn_Ward <- dunn(distance = d, clusters = hasil_ward$cluster, Data = as.matrix(data3), method = "euclidean")
+
+# Menampilkan Hasil Evaluasi
+cat("BERIKUT HASIL EVALUASI MENGGUNAKAN DATA AWAL \n \n")
+cat("DBI SOM =", DBI_SOM$DB/2, "   ; DBI Ward =", DBI_Ward$DB/2, "  ; (DBI Kecil Win) \n")
+cat("CHI SOM =", CHI_SOM, "   ; CHI Ward =", CHI_Ward, "  ; (CHI Besar Win) \n")
+cat("Dunn SOM =", Dunn_SOM, " ; Dunn Ward =", Dunn_Ward, "; (Dunn Besar Win) \n \n")
+cat("METODE TERBAIK : SELF ORGANIZING MAPS")
+```
+
+```{r Hasil-Clustering-Metode-Terbaik-(Self-Organizing-Maps)}
+# Menampilkan Hasil Clustering Metode Terbaik (SOM)
+
+kable(hasil_som)
+```
